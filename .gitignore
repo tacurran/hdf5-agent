@@ -1,0 +1,58 @@
+# Go
+*.so
+*.dylib
+*.dll
+*.exe
+*.exe~
+*.out
+*.app
+*.test
+*.prof
+hdf5-agent
+dist/
+bin/
+
+# Go module files
+go.sum
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+dist/
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+/frontend/dist
+/frontend/node_modules
+
+# HDF5 test files (optional - include in repo for testing)
+*.h5
+*.hdf5
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
