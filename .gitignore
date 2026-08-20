@@ -8,12 +8,9 @@
 *.app
 *.test
 *.prof
-hdf5-agent
-dist/
-bin/
-
-# Go module files
-go.sum
+/hdf5-agent
+/catalog
+coverage.out
 
 # IDEs
 .vscode/
@@ -27,22 +24,16 @@ go.sum
 node_modules/
 npm-debug.log
 yarn-error.log
-dist/
 .env
 .env.local
 .env.*.local
-
-# Build artifacts
 /frontend/dist
 /frontend/node_modules
 
-# HDF5 test files (optional - include in repo for testing)
+# HDF5 data files generated locally
 *.h5
 *.hdf5
-
-# Docker
-.dockerignore
-docker-compose.override.yml
+/data/
 
 # OS
 .DS_Store

@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install HDF5
+        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev pkg-config
+
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        env:
+          CGO_ENABLED: "1"
+          GODEBUG: cgocheck=0
+        run: go test ./... -count=1 -coverprofile=coverage.out -covermode=atomic
+
+      - name: Metrics
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          go run ./cmd/metrics -coverprofile=coverage.out -out=metrics/current.json -baseline=metrics/baseline.json -enforce
+          cat metrics/current.json
+
+      - name: Upload metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-metrics
+          path: metrics/current.json
+
+  frontend:
+    name: JavaScript
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t hdf5-agent:ci .
+
+      - name: Run health check
+        run: |
+          mkdir -p data
+          docker run -d --name hdf5-agent -p 8080:8080 -v "$PWD/data:/data" hdf5-agent:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz; then
+              curl -fsS http://127.0.0.1:8080/readyz
+              curl -fsS http://127.0.0.1:8080/api/v1/files
+              docker stop hdf5-agent
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs hdf5-agent
+          docker stop hdf5-agent || true
+          exit 1

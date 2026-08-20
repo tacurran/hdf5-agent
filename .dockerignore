@@ -1,0 +1,10 @@
+node_modules
+frontend/node_modules
+frontend/dist
+.git
+*.h5
+*.hdf5
+hdf5.zip
+coverage.out
+hdf5-agent
+*.test

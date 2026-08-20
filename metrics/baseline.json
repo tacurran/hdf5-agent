@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "label": "before",
+  "captured_at": "2026-08-20T16:44:00Z",
+  "git_ref": "911cc1710b3ddd0d9a619c93931d9d179c22856d",
+  "git_branch": "main",
+  "notes": "Pre-professionalization snapshot of tacurran/hdf5-agent. Collected from the tree as of the last main commit (May 1 2026). go test failed before any tests ran because go.sum was not tracked.",
+  "metrics": {
+    "go_module": "github.com/example/hdf5-agent",
+    "go_version": "1.26.2",
+    "go_packages": 2,
+    "go_files": 2,
+    "go_test_files": 0,
+    "go_test_functions": 0,
+    "go_coverage_percent": 0,
+    "go_sum_present": false,
+    "python_files": 1,
+    "js_test_files": 0,
+    "github_actions_workflows": 0,
+    "openapi_specs": 0,
+    "readme_bytes": 39,
+    "ci_lint_can_fail": false,
+    "healthz_endpoint": false,
+    "readyz_endpoint": false,
+    "versioned_http_api": false,
+    "docker_non_root": false,
+    "structured_logging": false,
+    "graceful_shutdown": false,
+    "request_ids": false
+  }
+}

@@ -1,73 +1,58 @@
-.PHONY: help check setup build dev docker prod test clean install-deps
+.PHONY: help setup build test vet lint fmt metrics docker clean testdata
 
-# Colors
 GREEN := \033[0;32m
 BLUE := \033[0;34m
-NC := \033[0m # No Color
+NC := \033[0m
 
 help:
-	@echo "$(BLUE)HDF5 Agent - Available Commands:$(NC)"
-	@echo ""
-	@echo "  $(GREEN)make check$(NC)         - Check prerequisites"
-	@echo "  $(GREEN)make setup$(NC)         - Setup dependencies"
-	@echo "  $(GREEN)make install-deps$(NC)  - Install system dependencies"
-	@echo "  $(GREEN)make build$(NC)         - Build backend and frontend"
-	@echo "  $(GREEN)make dev$(NC)           - Run development servers"
-	@echo "  $(GREEN)make docker$(NC)        - Run with Docker Compose"
-	@echo "  $(GREEN)make prod$(NC)          - Build production Docker image"
-	@echo "  $(GREEN)make test$(NC)          - Run tests"
-	@echo "  $(GREEN)make clean$(NC)         - Clean build artifacts"
-	@echo ""
-
-check:
-	@./run.sh check
+	@echo "$(BLUE)HDF5 Agent$(NC)"
+	@echo "  $(GREEN)make setup$(NC)     Install Go and frontend dependencies"
+	@echo "  $(GREEN)make test$(NC)      Run Go and frontend tests (fails on failure)"
+	@echo "  $(GREEN)make vet$(NC)       go vet"
+	@echo "  $(GREEN)make lint$(NC)      Go vet + frontend eslint"
+	@echo "  $(GREEN)make metrics$(NC)   Write metrics/current.json and print baseline delta"
+	@echo "  $(GREEN)make build$(NC)     Build service binary and frontend"
+	@echo "  $(GREEN)make testdata$(NC)  Write data/sample.h5"
+	@echo "  $(GREEN)make docker$(NC)    Build and run docker compose"
+	@echo "  $(GREEN)make clean$(NC)     Remove build artifacts"
 
 setup:
-	@./run.sh setup
+	go mod download
+	cd frontend && npm ci
 
-build:
-	@./run.sh build
-
-dev:
-	@./run.sh dev
-
-docker:
-	@./run.sh docker
-
-prod:
-	@./run.sh prod
-
-test:
-	@go test -v ./...
-
-clean:
-	@echo "Cleaning build artifacts..."
-	@rm -f hdf5-agent
-	@rm -rf frontend/dist
-	@rm -rf frontend/node_modules
-	@go clean
-	@echo "Done!"
-
-install-deps:
-	@echo "Installing system dependencies..."
-	@which brew > /dev/null && brew install hdf5 || \
-	(apt-get update && apt-get install -y libhdf5-dev) || \
-	(yum install -y hdf5-devel)
-	@echo "Done!"
+vet:
+	go vet ./...
 
 fmt:
-	@echo "Formatting code..."
-	@go fmt ./...
-	@cd frontend && npm run lint || true
+	gofmt -w .
+	cd frontend && npm run lint
 
-lint:
-	@echo "Linting Go code..."
-	@go vet ./...
-	@echo "Linting TypeScript/React..."
-	@cd frontend && npm run lint || true
+lint: vet
+	test -z "$$(gofmt -l .)"
+	cd frontend && npm run lint
 
-run-test-server:
-	@go run scripts/create_test_data.go
-	@echo "Test data created at: test_data.h5"
+test:
+	CGO_ENABLED=1 go test ./... -count=1 -coverprofile=coverage.out -covermode=atomic
+	cd frontend && npm test
+
+metrics: test
+	go run ./cmd/metrics -coverprofile=coverage.out -out=metrics/current.json -baseline=metrics/baseline.json -enforce
+
+build:
+	mkdir -p public data
+	cd frontend && npm run build && rm -rf ../public && cp -R dist ../public
+	CGO_ENABLED=1 go build -o hdf5-agent ./cmd/hdf5-agent
+
+testdata:
+	mkdir -p data
+	go run ./cmd/create-testdata -out data/sample.h5
+
+docker:
+	mkdir -p data
+	docker compose up --build
+
+clean:
+	rm -f hdf5-agent coverage.out
+	rm -rf frontend/dist public
 
 .DEFAULT_GOAL := help

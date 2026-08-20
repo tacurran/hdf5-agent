@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
+import {
+  listFiles,
+  getFileStructure,
+  readDataset,
+  createFile,
+  deleteFile,
+  updateDataset,
+} from './api';
 
 // Icons as inline SVG components
 const Icons = {
@@ -29,12 +37,6 @@ const Icons = {
   ChevronDown: () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <polyline points="6 9 12 15 18 9"></polyline>
-    </svg>
-  ),
-  Edit: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
     </svg>
   ),
   Download: () => (
@@ -90,7 +92,7 @@ const TreeNode = ({ node, path = "", onSelect, selectedPath, level = 0 }) => {
         )}
         {!isGroup && <span className="tree-toggle-placeholder" />}
 
-        {isFile && <Icons.File className="tree-icon" />}
+        {(isFile || (!isGroup && !isDataset)) && <Icons.File className="tree-icon" />}
         {isGroup && <Icons.Folder className="tree-icon" />}
         {isDataset && <Icons.Database className="tree-icon" />}
 
@@ -188,13 +190,10 @@ export default function App() {
   const [newFilename, setNewFilename] = useState('');
   const [selectedPath, setSelectedPath] = useState(null);
 
-  const API_BASE = 'http://localhost:8080/api';
-
   const loadFiles = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/files`);
-      const data = await response.json();
+      const data = await listFiles();
       setFiles(data || []);
       setError('');
     } catch (err) {
@@ -204,11 +203,10 @@ export default function App() {
     }
   }, []);
 
-  const loadFileStructure = useCallback(async (filePath) => {
+  const loadFileStructure = useCallback(async (name) => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/file/structure?path=${encodeURIComponent(filePath)}`);
-      const data = await response.json();
+      const data = await getFileStructure(name);
       setFileStructure(data);
       setSelectedDataset(null);
       setDatasetData(null);
@@ -220,13 +218,10 @@ export default function App() {
     }
   }, []);
 
-  const loadDataset = useCallback(async (filePath, datasetPath) => {
+  const loadDataset = useCallback(async (name, datasetPath) => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `${API_BASE}/dataset/read?file=${encodeURIComponent(filePath)}&path=${encodeURIComponent(datasetPath)}`
-      );
-      const data = await response.json();
+      const data = await readDataset(name, datasetPath);
       setDatasetData(data);
       setError('');
     } catch (err) {
@@ -239,34 +234,21 @@ export default function App() {
   const handleSelectFile = async (file) => {
     setSelectedFile(file);
     setSelectedPath(file.name);
-    await loadFileStructure(file.path);
+    await loadFileStructure(file.name);
   };
 
   const handleSelectDataset = async (path, node) => {
+    const datasetPath = node.path || path;
     setSelectedPath(path);
-    setSelectedDataset({ path, ...node });
-    await loadDataset(selectedFile.path, path);
+    setSelectedDataset({ ...node, path: datasetPath });
+    await loadDataset(selectedFile.name, datasetPath);
   };
 
   const handleUpdateData = async (index, newValue) => {
     try {
-      const response = await fetch(`${API_BASE}/dataset/update?file=${encodeURIComponent(selectedFile.path)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: selectedDataset.path,
-          data: [newValue],
-          indices: [index],
-        }),
-      });
-
-      if (response.ok) {
-        setError('');
-        // Reload dataset to show updated value
-        await loadDataset(selectedFile.path, selectedDataset.path);
-      } else {
-        setError('Failed to update data');
-      }
+      await updateDataset(selectedFile.name, selectedDataset.path, index, newValue);
+      setError('');
+      await loadDataset(selectedFile.name, selectedDataset.path);
     } catch (err) {
       setError('Update failed: ' + err.message);
     }
@@ -274,41 +256,23 @@ export default function App() {
 
   const handleCreateFile = async () => {
     if (!newFilename.trim()) return;
-
     try {
-      const response = await fetch(`${API_BASE}/file/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: newFilename }),
-      });
-
-      if (response.ok) {
-        setNewFilename('');
-        setShowNewFileModal(false);
-        await loadFiles();
-      } else {
-        setError('Failed to create file');
-      }
+      await createFile(newFilename.trim());
+      setNewFilename('');
+      setShowNewFileModal(false);
+      await loadFiles();
     } catch (err) {
       setError('Create file failed: ' + err.message);
     }
   };
 
-  const handleDeleteFile = async (filePath) => {
+  const handleDeleteFile = async (name) => {
     if (!confirm('Delete file? This cannot be undone.')) return;
-
     try {
-      const response = await fetch(`${API_BASE}/file/delete?path=${encodeURIComponent(filePath)}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setSelectedFile(null);
-        setFileStructure(null);
-        await loadFiles();
-      } else {
-        setError('Failed to delete file');
-      }
+      await deleteFile(name);
+      setSelectedFile(null);
+      setFileStructure(null);
+      await loadFiles();
     } catch (err) {
       setError('Delete failed: ' + err.message);
     }
@@ -354,8 +318,8 @@ export default function App() {
             {files && files.length > 0 ? (
               files.map((file) => (
                 <div
-                  key={file.path}
-                  className={`file-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                  key={file.name}
+                  className={`file-item ${selectedFile?.name === file.name ? 'active' : ''}`}
                 >
                   <div
                     className="file-item-header"
@@ -364,13 +328,13 @@ export default function App() {
                     <Icons.File />
                     <div className="file-item-info">
                       <div className="file-name">{file.name}</div>
-                      <div className="file-size">{(parseInt(file.size) / 1024).toFixed(1)} KB</div>
+                      <div className="file-size">{((file.size_bytes || 0) / 1024).toFixed(1)} KB</div>
                     </div>
                   </div>
-                  {selectedFile?.path === file.path && (
+                  {selectedFile?.name === file.name && (
                     <button
                       className="btn-delete"
-                      onClick={() => handleDeleteFile(file.path)}
+                      onClick={() => handleDeleteFile(file.name)}
                       title="Delete file"
                     >
                       <Icons.Trash />
@@ -425,8 +389,8 @@ export default function App() {
                     <h2>{selectedDataset.name}</h2>
                     <div className="data-meta">
                       <span className="meta-item">Shape: {selectedDataset.shape?.join(' × ')}</span>
-                      <span className="meta-item">Type: {selectedDataset.datatype}</span>
-                      <span className="meta-item">Size: {selectedDataset.size}</span>
+                      <span className="meta-item">Type: {selectedDataset.dtype || selectedDataset.datatype}</span>
+                      <span className="meta-item">Size: {selectedDataset.npoints || selectedDataset.size}</span>
                     </div>
                   </div>
                   <button className="btn btn-secondary">

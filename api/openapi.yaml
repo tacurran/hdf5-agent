@@ -1,0 +1,379 @@
+openapi: 3.0.3
+info:
+  title: HDF5 Agent API
+  description: |
+    Versioned HTTP API for browsing and manipulating HDF5 files.
+
+    Other services in a data platform must call this API (JSON over HTTP)
+    rather than linking against the HDF5 C library. The Go client in
+    `pkg/hdf5client` is a convenience wrapper around these endpoints.
+
+    All responses may include `X-Request-ID`. Clients should send that header
+    to correlate logs across services. Errors use the envelope
+    `{ "error": { "code", "message", "request_id" } }`.
+  version: 1.1.0
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: /
+    description: Current host
+tags:
+  - name: health
+    description: Liveness and readiness for orchestrators and SOA callers
+  - name: files
+    description: HDF5 file inventory and structure
+  - name: datasets
+    description: Dataset read and in-place update
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: liveness
+      summary: Process liveness
+      description: Returns 200 if the HTTP process is running. Does not check the data directory.
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /readyz:
+    get:
+      tags: [health]
+      operationId: readiness
+      summary: Process readiness
+      description: Returns 200 if the data directory is readable.
+      responses:
+        "200":
+          description: Ready to serve file operations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ready"
+        "503":
+          $ref: "#/components/responses/Error"
+  /api/v1/health:
+    get:
+      tags: [health]
+      operationId: apiHealth
+      summary: JSON health (same as /healthz)
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /api/v1/ready:
+    get:
+      tags: [health]
+      operationId: apiReady
+      summary: JSON readiness (same as /readyz)
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ready"
+        "503":
+          $ref: "#/components/responses/Error"
+  /api/v1/openapi.yaml:
+    get:
+      tags: [health]
+      operationId: openapiSpec
+      summary: OpenAPI 3 document for this API
+      responses:
+        "200":
+          description: YAML specification
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /api/v1/files:
+    get:
+      tags: [files]
+      operationId: listFiles
+      summary: List HDF5 files in the data directory
+      responses:
+        "200":
+          description: File inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileList"
+        "500":
+          $ref: "#/components/responses/Error"
+    post:
+      tags: [files]
+      operationId: createFile
+      summary: Create an empty HDF5 file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFile"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: created
+                  name:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{name}:
+    parameters:
+      - $ref: "#/components/parameters/FileName"
+    get:
+      tags: [files]
+      operationId: getFileStructure
+      summary: Hierarchical groups and datasets in a file
+      responses:
+        "200":
+          description: File tree
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [files]
+      operationId: deleteFile
+      summary: Delete an HDF5 file
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+                  name:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/files/{name}/datasets:
+    parameters:
+      - $ref: "#/components/parameters/FileName"
+    get:
+      tags: [datasets]
+      operationId: readDataset
+      summary: Read a dataset
+      parameters:
+        - in: query
+          name: path
+          required: true
+          schema:
+            type: string
+          description: HDF5 object path, for example /measurements/waveform
+      responses:
+        "200":
+          description: Dataset values and metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    put:
+      tags: [datasets]
+      operationId: updateDataset
+      summary: Update flattened dataset indices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDataset"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: updated
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "413":
+          $ref: "#/components/responses/Error"
+components:
+  parameters:
+    FileName:
+      in: path
+      name: name
+      required: true
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*\.(h5|hdf5)$'
+      description: HDF5 file basename in the configured data directory
+  schemas:
+    Health:
+      type: object
+      required: [status, service, version, api]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: hdf5-agent
+        version:
+          type: string
+          example: 1.1.0
+        api:
+          type: string
+          example: v1
+    Ready:
+      type: object
+      required: [status, data_dir]
+      properties:
+        status:
+          type: string
+          example: ready
+        data_dir:
+          type: string
+    FileList:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileInfo"
+    FileInfo:
+      type: object
+      required: [name, size_bytes]
+      properties:
+        name:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+    Node:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        type:
+          type: string
+          enum: [file, group, dataset]
+        shape:
+          type: array
+          items:
+            type: integer
+        dtype:
+          type: string
+        npoints:
+          type: integer
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/Node"
+    Dataset:
+      type: object
+      required: [name, path, shape, dtype, npoints, truncated]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        shape:
+          type: array
+          items:
+            type: integer
+        dtype:
+          type: string
+        npoints:
+          type: integer
+        truncated:
+          type: boolean
+        data:
+          description: Array of numbers, or null when truncated
+          nullable: true
+    CreateFile:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: experiment.h5
+    UpdateDataset:
+      type: object
+      required: [path, indices]
+      properties:
+        path:
+          type: string
+          example: /measurements/waveform
+        indices:
+          type: array
+          items:
+            type: integer
+        values:
+          type: array
+          items: {}
+        data:
+          description: Alias for values (UI compatibility)
+          type: array
+          items: {}
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - invalid_request
+                - invalid_name
+                - invalid_path
+                - not_found
+                - conflict
+                - unsupported_type
+                - too_large
+                - not_ready
+                - internal
+            message:
+              type: string
+            request_id:
+              type: string
+  responses:
+    Error:
+      description: Structured error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
