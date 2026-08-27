@@ -1,0 +1,37 @@
+# Compose stack that shows HDF5 Agent as one service in a larger data product.
+# Usage from repo root:
+#   mkdir -p data && go run ./cmd/create-testdata -out data/sample.h5
+#   docker compose -f examples/docker-compose.yml up --build
+services:
+  hdf5-agent:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      HTTP_ADDR: ":8080"
+      HDF5_DATA_DIR: /data
+      STATIC_DIR: /app/public
+      LOG_FORMAT: json
+      CORS_ORIGINS: "*"
+    volumes:
+      - ../data:/data
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  catalog:
+    build:
+      context: ..
+      dockerfile: examples/data-catalog/Dockerfile
+    environment:
+      HDF5_AGENT_URL: http://hdf5-agent:8080
+      HTTP_ADDR: ":8090"
+    depends_on:
+      hdf5-agent:
+        condition: service_healthy
+    ports:
+      - "8090:8090"

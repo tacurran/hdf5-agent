@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "label": "current",
+  "captured_at": "2026-08-20T16:54:01Z",
+  "git_ref": "911cc1710b3ddd0d9a619c93931d9d179c22856d",
+  "git_branch": "cursor/professionalize-hdf5-service-ec2d",
+  "metrics": {
+    "ci_lint_can_fail": true,
+    "docker_non_root": true,
+    "github_actions_workflows": 1,
+    "go_coverage_percent": 53.9,
+    "go_files": 30,
+    "go_module": "github.com/tacurran/hdf5-agent",
+    "go_packages": 12,
+    "go_sum_present": true,
+    "go_test_files": 14,
+    "go_test_functions": 40,
+    "go_version": "1.26.2",
+    "graceful_shutdown": true,
+    "healthz_endpoint": true,
+    "js_test_files": 1,
+    "openapi_specs": 1,
+    "python_files": 0,
+    "readme_bytes": 3863,
+    "readyz_endpoint": true,
+    "request_ids": true,
+    "structured_logging": true,
+    "versioned_http_api": true
+  }
+}
