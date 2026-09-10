@@ -4,6 +4,19 @@ GREEN := \033[0;32m
 BLUE := \033[0;34m
 NC := \033[0m
 
+# The gonum.org/v1/hdf5 package hardcodes CGO paths for Intel Homebrew
+# (/usr/local), which is wrong on Apple Silicon (/opt/homebrew). Derive the
+# real paths from pkg-config so builds work regardless of prefix. On Linux the
+# package's built-in flags already work, so empty values here are harmless.
+# Respects any CGO_CFLAGS/CGO_LDFLAGS already set in the environment.
+HDF5_PC := $(shell pkg-config --exists hdf5 && echo hdf5 || { pkg-config --exists hdf5-serial && echo hdf5-serial; })
+ifneq ($(HDF5_PC),)
+CGO_CFLAGS ?= $(shell pkg-config --cflags-only-I $(HDF5_PC))
+CGO_LDFLAGS ?= $(shell pkg-config --libs-only-L $(HDF5_PC))
+export CGO_CFLAGS
+export CGO_LDFLAGS
+endif
+
 help:
 	@echo "$(BLUE)HDF5 Agent$(NC)"
 	@echo "  $(GREEN)make setup$(NC)     Install Go and frontend dependencies"
