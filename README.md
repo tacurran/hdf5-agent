@@ -14,6 +14,20 @@ Python.
 make setup
 make testdata
 make test
+```
+
+Then start the agent. Two options:
+
+**Option A — helper script (recommended):** runs the Go backend and Vite dev
+server together and sets the HDF5 CGO flags for you.
+
+```bash
+./run.sh dev
+```
+
+**Option B — run each process yourself:**
+
+```bash
 HDF5_DATA_DIR=./data STATIC_DIR= LOG_FORMAT=text go run ./cmd/hdf5-agent
 ```
 
@@ -25,6 +39,17 @@ cd frontend && npm run dev
 
 Open http://localhost:3000. The Vite dev server proxies `/api` to the Go process
 on port 8080.
+
+> **macOS / Apple Silicon:** bare `go run` / `go build` need HDF5 CGO paths that
+> the vendored library hardcodes incorrectly. `make` and `./run.sh` set these
+> automatically. For raw `go` commands (Option B), either use
+> [direnv](https://direnv.net) — an `.envrc` is included, just run `direnv allow`
+> — or export them yourself:
+>
+> ```bash
+> export CGO_CFLAGS="$(pkg-config --cflags-only-I hdf5)"
+> export CGO_LDFLAGS="$(pkg-config --libs-only-L hdf5)"
+> ```
 
 **Docker (API + built UI on one port):**
 
