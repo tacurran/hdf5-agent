@@ -151,28 +151,57 @@ element count, datatype class + size. That's it.
 
 ## 5. Candidate libraries (2026)
 
-Web search surfaces a cluster of "modern pure‑Go HDF5" repos with **near‑
-identical READMEs**: `shyrmapp/hdf5` (v0.17.0, Go 1.26, MIT), `scigolib/hdf5`
-(v0.11.4‑beta), `cwbudde/go-hdf5` (v0.13.x). They advertise:
+### 5.1 Primary candidate: `github.com/scigolib/hdf5`
 
-- Pure Go, no cgo; read: contiguous/chunked/compact + GZIP; write: datasets in
-  all layouts, groups, attributes, resizable dims, GZIP/LZF/Shuffle/Fletcher32;
-  HDF5 1.8–2.0 superblocks; round‑trip through `h5dump`/`h5diff`/`h5repack` in CI.
+This appears to be the **canonical** pure‑Go HDF5 project; the near‑identical
+`shyrmapp/hdf5` and `cwbudde/go-hdf5` repos look like mirrors/renames of it.
 
-Due‑diligence concerns (important for a load‑bearing dependency):
+Concrete facts (verified from the repo, not just marketing):
 
-1. **Provenance.** Multiple repos share identical marketing copy and comparison
-   tables. This looks like one project mirrored/renamed across accounts. Before
-   depending on it we must identify the *canonical* module, its license in the
-   `go.mod` we import, release cadence, issue responsiveness, and bus factor.
-2. **Maturity.** All are `v0.x`/beta with no long‑term API‑stability guarantee.
-   Their compatibility/benchmark tables are **self‑authored**; treat as claims
-   to verify, not facts.
+- Module `github.com/scigolib/hdf5`, `go 1.25`, **MIT**. Only non‑test deps are
+  `testify` and a YAML lib — genuinely pure Go, no cgo.
+- Latest release **v0.14.1** (2026‑09‑02, "Write Compatibility & Security
+  Fixes"); repo created 2025‑06‑10 (earliest of the cluster → likely the
+  original); actively pushed. ~31 stars, 1 open issue at time of writing.
+- Advertised: read contiguous/chunked/compact + GZIP; write datasets/groups/
+  attributes, resizable dims, GZIP/LZF/Shuffle/Fletcher32; HDF5 v0/v2/v3
+  superblocks; round‑trip through `h5dump`/`h5diff`/`h5repack` in CI.
+
+**API shape differs from gonum**, so this is an adaptation, not a drop‑in:
+
+```go
+f, _ := hdf5.Open("data.h5")            // vs hdf5.OpenFile(path, flags)
+f.Walk(func(path string, o hdf5.Object) // vs manual CommonFG enumeration
+data, _ := ds.Read()                     // returns decoded data; also
+                                         // ds.ReadStrings()/ds.ReadCompound()
+fw, _ := hdf5.CreateForWrite("d.h5", hdf5.CreateTruncate, opts...) // vs CreateFile
+```
+
+Notable for our mapping (§4):
+- `ds.Read()` decodes automatically across layouts (contiguous/chunked + GZIP),
+  which is *more* than our current reader does — good for ingesting third‑party
+  files. But its return typing differs from gonum's "allocate a typed slice and
+  `Read(&slice)`" model, so `readValues`/`writeIndices` need reworking.
+- Documented supported datatypes: **int32, int64, float32, float64**, string,
+  compound. Our store also advertises **int8/int16** (`size` 1/2). That gap must
+  be verified — either the library supports them and the docs are incomplete, or
+  we narrow our advertised support / add conversion.
+- Write path is `CreateForWrite` + options (incl. B‑tree rebalancing strategies),
+  not gonum's `CreateFile`/`CreateGroup`/`CreateDataset`/`Write`. `sample.go`
+  must be rewritten against it.
+
+### 5.2 Due‑diligence concerns (important for a load‑bearing dependency)
+
+1. **Provenance.** Confirm `scigolib/hdf5` is the upstream we track (the mirrors
+   share identical copy). Pin an exact version; consider vendoring.
+2. **Maturity.** `v0.x`, ~31 stars, single maintainer signal — no long‑term
+   API‑stability guarantee. Compatibility/benchmark tables are **self‑authored**;
+   treat as claims to verify.
 3. **Correctness surface.** HDF5 is a large, subtle format. Our needs are tiny,
    but files we *write* must be readable by third‑party consumers (Python
    `h5py`, MATLAB, the C tools), and files we *read* may come from those tools.
    That interop is exactly where an immature reader/writer is most likely to
-   break.
+   break — hence the round‑trip corpus gate in §9.
 
 Other options for completeness:
 - Keep `gonum/hdf5` (status quo; cgo).
@@ -229,9 +258,10 @@ entirely. Listed for completeness; not recommended without stakeholder input.
    (kills cgo/libhdf5 and all its build friction) but the replacement's maturity
    is unproven for our interop requirements.
 2. **Spike it behind an interface.** Add a `fileBackend` abstraction in
-   `internal/hdf5store`, implement it with the leading pure‑Go candidate, and
-   run the existing store tests plus a new **round‑trip corpus** (`h5dump`/`h5diff`
-   against Python‑ and C‑produced files).
+   `internal/hdf5store`, implement it with **`github.com/scigolib/hdf5`** (§5.1,
+   pinned to `v0.14.1` or later), and run the existing store tests plus a new
+   **round‑trip corpus** (`h5dump`/`h5diff` against Python‑ and C‑produced files).
+   Confirm int8/int16 coverage during the spike (§5.1).
 3. **Gate the decision on that corpus.** If it passes cleanly and the canonical
    module has credible governance, proceed with the full migration (§6) and
    delete the cgo scaffolding. If not, stay on `gonum/hdf5`; the PR #14 workaround
