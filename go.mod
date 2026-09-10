@@ -6,3 +6,4 @@ ignore node_modules
 
 require gonum.org/v1/hdf5 v0.0.0-20210714002203-8c5d23bc6946
 
+require github.com/scigolib/hdf5 v0.14.1
