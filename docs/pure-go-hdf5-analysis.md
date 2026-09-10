@@ -20,8 +20,12 @@ evaluates whether we *should* migrate.
   accounts, self‑reported benchmarks). Recommendation: **prototype behind an
   interface and gate the switch on a format round‑trip test corpus** rather than
   swapping the dependency outright today.
-- One correction up front: the premise "works natively GPU" does **not** follow
-  from dropping cgo — see §3.
+- On the "works natively GPU" premise: dropping cgo does not *by itself* give
+  GPU, and GPU compute isn't in this service's scope today. But a genuine
+  **fully cgo‑free** "read HDF5 → GPU compute" path does exist via
+  [`gogpu/wgpu`](https://github.com/gogpu/wgpu) (zero‑cgo WebGPU with compute
+  shaders), so keeping the stack cgo‑free is the consistent choice *if* compute
+  is ever added — see §3 / §3.1.
 
 ## 2. Where we are today
 
@@ -64,15 +68,49 @@ What it does **not** buy us — correcting the stated premise:
 
 HDF5 library choice is unrelated to GPU execution. Neither `gonum/hdf5` nor any
 pure‑Go HDF5 library performs GPU compute; HDF5 is a **file format / storage
-layer**. Removing cgo does not enable, accelerate, or "natively" target a GPU.
-The most charitable reading of the phrase is "works natively on any
+layer**. Removing cgo does not, by itself, enable or accelerate GPU work. The
+most charitable reading of the phrase is "works natively on any
 platform/architecture" — i.e. the **cross‑compilation / static‑binary** benefit
-in points 1–2, which is real. If there is an actual GPU workload behind this
-request (e.g. feeding datasets into a CUDA/compute pipeline), that is a separate
-concern from the storage library and should be scoped independently; note also
-that CUDA/most GPU bindings *themselves* require cgo, so "no cgo" and "GPU" tend
-to pull in opposite directions. I've flagged this so we don't justify the
-migration on a benefit it doesn't deliver.
+in points 1–2, which is real. Crucially, GPU compute is **not in this service's
+scope today**: it reads/writes small numeric datasets and serves JSON. So GPU is
+a forward‑looking concern, not a reason to migrate the storage layer now.
+
+### 3.1 The coherent zero‑cgo GPU path: `gogpu`
+
+An earlier draft claimed "most GPU bindings themselves require cgo, so no‑cgo and
+GPU pull in opposite directions." That is **wrong**, and worth correcting:
+[`gogpu/wgpu`](https://github.com/gogpu/wgpu) is a pure‑Go, **zero‑cgo** WebGPU
+implementation (MIT, Go 1.25+) with **full compute‑shader support** and GPU→CPU
+readback across Vulkan / Metal / DX12 / GLES plus a software fallback. It builds
+with `CGO_ENABLED=0`, cross‑compiles, and uses pure‑Go runtime FFI (`goffi`)
+rather than cgo.
+
+This makes the "works natively GPU" premise *coherent*: a **fully cgo‑free
+pipeline** is achievable — pure‑Go HDF5 read → pure‑Go WebGPU compute — shipping
+as one static, cross‑compilable binary with no C toolchain and no `libhdf5`.
+That is a genuine architectural story, and the pure‑Go HDF5 swap is the storage
+half of it.
+
+Caveats that keep this honest:
+
+- **Build‑time vs runtime.** `gogpu/wgpu` is zero‑cgo *to build*, but at runtime
+  it still dynamically loads the platform GPU driver (libvulkan/Metal/DX12/GLES)
+  or falls back to a CPU software backend. So it is *not* dependency‑free at
+  runtime the way a pure‑Go HDF5 reader is — a real GPU deployment still needs a
+  driver present.
+- **Maturity/provenance.** The `gogpu` org is very new (created Dec 2025) and has
+  grown extremely fast (~250K LOC across the ecosystem in a few months, with
+  heavy self‑promotion); all components are `v0.x`. Backends are advertised as
+  "stable," but this is unproven for production and should be validated
+  independently before any dependency.
+- **Scope.** Nothing in the current service needs a GPU. Adopting `gogpu` would
+  be a *new compute feature*, separate from the storage‑library decision this
+  document is about. It should be scoped, justified, and prototyped on its own.
+
+Bottom line: `gogpu` removes my original objection and shows a no‑cgo GPU path
+exists — but it is an argument for *keeping the whole stack cgo‑free if/when GPU
+compute is added*, not an independent justification for swapping the HDF5
+backend today.
 
 ## 4. API surface we actually use
 
@@ -198,8 +236,13 @@ entirely. Listed for completeness; not recommended without stakeholder input.
    module has credible governance, proceed with the full migration (§6) and
    delete the cgo scaffolding. If not, stay on `gonum/hdf5`; the PR #14 workaround
    already makes the cgo path painless day‑to‑day.
-4. **Do not justify the migration on GPU.** Track any actual GPU/compute
-   requirement as a separate initiative (§3).
+4. **Treat GPU as a separate, forward‑looking initiative — but a coherent one.**
+   A no‑cgo GPU path genuinely exists via [`gogpu/wgpu`](https://github.com/gogpu/wgpu)
+   (§3.1), so a fully cgo‑free "read HDF5 → GPU compute" stack is achievable. Do
+   not justify the *storage‑library* swap on GPU today, but if/when compute is on
+   the roadmap, keeping the stack cgo‑free (pure‑Go HDF5 + `gogpu`) is the
+   consistent choice. Scope and prototype `gogpu` independently, with the same
+   maturity scrutiny applied to the HDF5 candidates.
 
 ### Decision matrix
 
