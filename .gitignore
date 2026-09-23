@@ -36,6 +36,9 @@ yarn-error.log
 *.hdf5
 /data/
 
+# ...but keep committed test fixtures
+!internal/hdf5store/purego/testdata/sample.h5
+
 # OS
 .DS_Store
 Thumbs.db
