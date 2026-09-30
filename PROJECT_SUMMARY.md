@@ -18,6 +18,11 @@ browser / catalog / batch job
 
 HDF5 C calls are serialized with a mutex since distro libhdf5 builds are often not thread-safe.
 
+**Note**: This describes the current implementation. See [ARCHITECTURE.md](ARCHITECTURE.md)
+for planned future architecture including a Go BFF layer and integration with the
+[Twothink Alembic Identity Plane](https://github.com/twothinkinc/alembic-identity-plane-go)
+for authentication and authorization.
+
 ## Repository Structure
 
 ```
